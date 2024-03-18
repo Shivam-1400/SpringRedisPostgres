@@ -6,9 +6,11 @@ import com.example.demo.entity.PersonEntry;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.api.sync.RedisCommands;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+
 import org.springframework.web.bind.annotation.*;
 
-import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,6 +21,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/person")
 public class PersonEntryController {
+    Logger logger= LoggerFactory.getLogger(PersonEntryController.class);
     RedisConnection redisConnection;
     DBConnection dbConnection;
     RedisCommands<String, String> syncCommand;
@@ -26,16 +29,28 @@ public class PersonEntryController {
     ObjectMapper objectMapper;
 
     @GetMapping
-    public String doSomethnig() throws JsonProcessingException {
+    public String doSomething() throws JsonProcessingException {
         initialise();
+        logger.info("Shivam: Doing Something. Initialising");
         return "Doing something";
     }
 
 
     @GetMapping("/show-all")
     public List<PersonEntry> getAll() throws JsonProcessingException {
-        initialise();
         List<String> redisRead= syncCommand.lrange(redisConnection.getKey(), 0, -1);
+        if( !redisRead.isEmpty()){
+            objectMapper= new ObjectMapper();
+            List<PersonEntry> personEntryList= new ArrayList<>();
+            for(String json: redisRead){
+                PersonEntry p= objectMapper.readValue(json, PersonEntry.class);
+                personEntryList.add(p);
+                System.out.println(p);
+            }
+            return personEntryList;
+        }
+        initialise();
+        redisRead= syncCommand.lrange(redisConnection.getKey(), 0, -1);
         objectMapper= new ObjectMapper();
         List<PersonEntry> personEntryList= new ArrayList<>();
         for(String json: redisRead){
@@ -47,33 +62,34 @@ public class PersonEntryController {
     }
 
     @PostMapping("/add-new")
-    public String createEntry(@RequestBody PersonEntry newPersonEntry) throws JsonProcessingException, SQLException {
+    public void createEntry(@RequestBody PersonEntry newPersonEntry) throws JsonProcessingException, SQLException {
         long redisResult= syncCommand.lpush(redisConnection.getKey(), objectMapper.writeValueAsString(newPersonEntry));
 
-        PreparedStatement pst= dbConnection.getConnection().prepareStatement("insert into demo_person(id, name, email) values(?, ?, ?');");
-        pst.setInt(1, newPersonEntry.getId());
+        PreparedStatement pst= dbConnection.getConnection().prepareStatement("insert into demo_person(id, name, email) values(?, ?, ?);");
+        pst.setString(1, newPersonEntry.getId());
         pst.setString(2, newPersonEntry.getName());
-        pst.setString(2, newPersonEntry.getEmail());
+        pst.setString(3, newPersonEntry.getEmail());
 
         int result= pst.executeUpdate();
 
         if(result==1){
             initialise();
-            return "Data inserted";
+            logger.info("Shivam: Data inserted");
         }
-
-        return "Error";
+        else{
+            logger.error("Shivam: Error. Person Not inserted");
+        }
     }
 
     @GetMapping("/id/{myId}")
-    public PersonEntry getPersonEntryById(@PathVariable int myId) throws JsonProcessingException {
+    public PersonEntry getPersonEntryById(@PathVariable String myId) throws JsonProcessingException {
 
         List<String> redisRead= syncCommand.lrange(redisConnection.getKey(), 0, -1);
 
         objectMapper= new ObjectMapper();
         for(String json: redisRead){
             PersonEntry p= objectMapper.readValue(json, PersonEntry.class);
-            if(p.getId()== myId){
+            if(p.getId().equals(myId)){
                 System.out.println(p);
                 return p;
             }
@@ -93,58 +109,71 @@ public class PersonEntryController {
     }
 
     @DeleteMapping("/id/{myId}")
-    public String  deletePersonEntryById(@PathVariable int myId) throws JsonProcessingException, SQLException {
+    public void deletePersonEntryById(@PathVariable String myId) throws JsonProcessingException, SQLException {
         PersonEntry personEntry= getPersonEntryById(myId);
         if(personEntry== null){
-            return  "Error while deleting";
+            logger.error("Shivam: Error while deleting");
+            return;
         }
         PreparedStatement pst= dbConnection.getConnection().prepareStatement("DELETE FROM demo_person WHERE id= ?");
-        pst.setInt(1, personEntry.getId());
+        pst.setString(1, personEntry.getId());
         int result= pst.executeUpdate();
         initialise();
         if(result==1){
-            return personEntry+" Deleted ";
+            logger.info("Shivam: "+personEntry+" Deleted.");
+            return;
         }
-        return  "Error while deleting";
+        logger.error("Shivam: Error while deleting");
     }
 
     @PutMapping("/id/{id}")
-    public String updatePersonEntry(@PathVariable int id, @RequestBody PersonEntry myEntry) throws JsonProcessingException, SQLException {
+    public void updatePersonEntry(@PathVariable String id, @RequestBody PersonEntry myEntry) throws JsonProcessingException, SQLException {
         PersonEntry personEntry= getPersonEntryById(id);
         if(personEntry== null){
-            return  "Error while updating";
+            logger.error("Shivam: Error while updating");
+            return;
         }
 
         PreparedStatement pst= dbConnection.getConnection().prepareStatement("DELETE FROM demo_person WHERE id= ?");
-        pst.setInt(1, personEntry.getId());
+        pst.setString(1, personEntry.getId());
         pst.executeUpdate();
 
         createEntry(myEntry);
         int result= pst.executeUpdate();
         if(result==1){
             initialise();
-            return personEntry+" updated ";
+            logger.info("Shivam: " +personEntry+" updated ");
         }
-        return  "Error while updating";
+        logger.error("Shivam: Error while updating");
     }
 
     void initialise() throws JsonProcessingException {
         redisConnection= new RedisConnection();
         syncCommand= redisConnection.getSyncCommand();
+        dbConnection= new DBConnection();
 
-        if(redisConnection== null || syncCommand== null){}
-//        syncCommand.lpush(redisConnection.getKey(), objectMapper.writeValueAsString(new PersonEntry(12, "karan", "12@12.com")));
-
+        if(redisConnection== null || syncCommand== null){
+            logger.info("Shivam: Error in initialisation with redis");
+        }
+        else{
+            logger.info("Shivam: Redis connected");
+        }
+        objectMapper= new ObjectMapper();
         List<String> redisRead= syncCommand.lrange(redisConnection.getKey(), 0, -1);
 
-        if(redisRead== null) {
-            System.out.println("Cache miss");
+        if(redisRead.isEmpty()) {
             dbConnection = new DBConnection();
+            if(dbConnection.getConnection()== null ){
+                logger.info("Shivam: Error in initialisation with postgres");
+            }
+            else{
+                logger.info("Shivam: Postgres connected");
+            }
             try {
                 PreparedStatement pst = dbConnection.getConnection().prepareStatement("SELECT * FROM demo_person;");
                 ResultSet resultSet = pst.executeQuery();
                 while (resultSet.next()){
-                    PersonEntry p= new PersonEntry(resultSet.getInt(1), resultSet.getString(2), resultSet.getString(3));
+                    PersonEntry p= new PersonEntry(resultSet.getString(1), resultSet.getString(2), resultSet.getString(3));
                     syncCommand.lpush(redisConnection.getKey(), objectMapper.writeValueAsString(p));
                 }
             } catch (SQLException e) {
@@ -155,7 +184,6 @@ public class PersonEntryController {
             objectMapper= new ObjectMapper();
             for(String json: redisRead){
                 PersonEntry p= objectMapper.readValue(json, PersonEntry.class);
-                System.out.println(p);
             }
         }
     }

@@ -1,10 +1,13 @@
 package com.example.demo.entity;
 
 public class PersonEntry {
-    private int id;
+    private String id;
     private String name;
 
-    public PersonEntry(int id, String name, String email) {
+    public PersonEntry() {
+    }
+
+    public PersonEntry(String id, String name, String email) {
         this.id = id;
         this.name = name;
         this.email = email;
@@ -12,28 +15,16 @@ public class PersonEntry {
 
     private String email;
 
-    public int getId() {
+    public String getId() {
         return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
     }
 
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
     public String getEmail() {
         return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
     }
 
     @Override
