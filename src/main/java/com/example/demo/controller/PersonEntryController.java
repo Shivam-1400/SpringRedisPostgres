@@ -16,6 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 
 @RestController
@@ -89,7 +90,7 @@ public class PersonEntryController {
         objectMapper= new ObjectMapper();
         for(String json: redisRead){
             PersonEntry p= objectMapper.readValue(json, PersonEntry.class);
-            if(p.getId().equals(myId)){
+            if(Objects.equals(p.getId(), myId)){
                 System.out.println(p);
                 return p;
             }
@@ -112,7 +113,7 @@ public class PersonEntryController {
     public void deletePersonEntryById(@PathVariable String myId) throws JsonProcessingException, SQLException {
         PersonEntry personEntry= getPersonEntryById(myId);
         if(personEntry== null){
-            logger.error("Shivam: Error while deleting");
+            logger.error("Shivam: Error while deleting since ID not found");
             return;
         }
         PreparedStatement pst= dbConnection.getConnection().prepareStatement("DELETE FROM demo_person WHERE id= ?");
@@ -139,12 +140,15 @@ public class PersonEntryController {
         pst.executeUpdate();
 
         createEntry(myEntry);
-        int result= pst.executeUpdate();
-        if(result==1){
-            initialise();
-            logger.info("Shivam: " +personEntry+" updated ");
-        }
-        logger.error("Shivam: Error while updating");
+//        int result= pst.executeUpdate();
+//        if(result==1){
+//            initialise();
+//            logger.info("Shivam: " +personEntry+" updated ");
+//        }
+//        else{
+//            logger.error("Shivam: Error while updating");
+//        }
+
     }
 
     void initialise() throws JsonProcessingException {
@@ -157,6 +161,7 @@ public class PersonEntryController {
         }
         else{
             logger.info("Shivam: Redis connected");
+            syncCommand.flushall();
         }
         objectMapper= new ObjectMapper();
         List<String> redisRead= syncCommand.lrange(redisConnection.getKey(), 0, -1);
